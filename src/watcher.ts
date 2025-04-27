@@ -155,7 +155,20 @@ ${truncatedDiff}`;
     }
 
     console.log('GitDoc AI: Fetching model...');
-    const model = await vscode.lm.selectChatModels({ family: config.aiModel });
+    const vendorMap: { [key: string]: string } = {
+      'gpt-4o': 'copilot',
+      'gpt-4-turbo': 'copilot',
+      'gpt-3.5-turbo': 'copilot',
+      'claude-3.7-sonnet': 'anthropic',
+      'claude-3.5-sonnet': 'anthropic',
+      'gemini-2.0-flash': 'google',
+      'gemini-1.5-pro': 'google',
+      'o1': 'copilot',
+      'o1-mini': 'copilot'
+    };
+
+    const vendor = vendorMap[config.aiModel] || 'copilot';
+    const model = await vscode.lm.selectChatModels({ vendor: vendor, family: config.aiModel });
 
     if (!model || model.length === 0) {
       console.error('GitDoc AI: No model available for family:', config.aiModel);
