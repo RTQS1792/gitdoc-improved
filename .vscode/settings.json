@@ -7,5 +7,5 @@
   },
   "typescript.tsc.autoDetect": "off",
   "editor.formatOnSave": true,
-  "gitdoc.enabled": false
+  "gitdoc.enabled": true
 }

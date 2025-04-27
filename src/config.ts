@@ -72,5 +72,11 @@ export default {
   },
   get aiUseEmojis() {
     return config().get("ai.useEmojis", false);
+  },
+  get aiUseConsistentEmojis() {
+    return config().get("ai.useConsistentEmojis", true);
+  },
+  get aiDebugMode() {
+    return config().get("ai.debugMode", false);
   }
 };

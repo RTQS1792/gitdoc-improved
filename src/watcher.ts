@@ -8,6 +8,31 @@ import * as minimatch from "minimatch";
 
 const REMOTE_NAME = "origin";
 
+// Define consistent emojis for commit types
+const COMMIT_EMOJIS = {
+  feat: "✨",
+  fix: "🐛",
+  docs: "📝",
+  style: "💄",
+  refactor: "♻️",
+  perf: "⚡️",
+  test: "✅",
+  build: "👷",
+  ci: "💚",
+  chore: "🔧",
+  update: "🔄",
+  add: "➕",
+  remove: "➖",
+  move: "🚚",
+  rename: "🏷️",
+  security: "🔒",
+  ui: "🎨",
+  init: "🎉",
+  config: "🔧",
+  wip: "🚧",
+  default: "📦"
+};
+
 async function pushRepository(
   repository: Repository,
   forcePush: boolean = false
@@ -37,8 +62,9 @@ async function pushRepository(
     await repository.push(...pushArgs);
 
     store.isPushing = false;
-  } catch {
+  } catch (error) {
     store.isPushing = false;
+    console.error("Push failed:", error);
 
     if (
       await vscode.window.showWarningMessage(
@@ -70,54 +96,161 @@ function matches(uri: vscode.Uri) {
   return minimatch(uri.path, config.filePattern, { dot: true });
 }
 
-async function generateCommitMessage(repository: Repository, changedUris: vscode.Uri[]): Promise<string | null> {
-  const diffs = await Promise.all(
-    changedUris.map(async (uri) => {
-      const filePath = vscode.workspace.asRelativePath(uri);
-      const fileDiff = await repository.diffWithHEAD(filePath);
+interface CommitMessageParts {
+  title: string;
+  body: string;
+}
 
-      return `## ${filePath}
----
-${fileDiff}`;
-    }));
+// Removed unused function - parseCommitMessage
+// This was declared but never used in the code
 
-  const model = await vscode.lm.selectChatModels({ family: config.aiModel });
-  if (!model || model.length === 0) return null;
+function determineCommitType(title: string): keyof typeof COMMIT_EMOJIS {
+  const lowerTitle = title.toLowerCase();
 
-  const prompt = `# Instructions
-
-You are a developer working on a project that uses Git for version control. You have made some changes to the codebase and are preparing to commit them to the repository. Your task is to summarize the changes that you have made into a concise commit message that describes the essence of the changes that were made.
-
-* Always start the commit message with a present tense verb such as "Update", "Fix", "Modify", "Add", "Improve", "Organize", "Arrange", "Mark", etc.
-* Respond in plain text, with no markdown formatting, and without any extra content. Simply respond with the commit message, and without a trailing period.
-* Don't reference the file paths that were changed, but make sure summarize all significant changes (using your best judgement).
-* When multiple files have been changed, give priority to edited files, followed by added files, and then renamed/deleted files.
-* When a change includes adding an emoji to a list item in markdown, then interpret a runner emoji as marking it as in progress, a checkmark emoji as meaning its completed, and a muscle emoji as meaning its a stretch goal.
-${config.aiUseEmojis ? "* Prepend an emoji to the message that expresses the nature of the changes, and is as specific/relevant to the subject and/or action of the changes as possible.\n" : ""}
-# Code change diffs
-
-${diffs.join("\n\n")}
-
-${config.aiCustomInstructions ? `# Additional Instructions (Important!)
-  
-${config.aiCustomInstructions}
-` : ""}
-# Commit message
-
-`;
-
-  const response = await model[0].sendRequest([{
-    role: vscode.LanguageModelChatMessageRole.User,
-    name: "User",
-    content: prompt
-  }]);
-
-  let summary = "";
-  for await (const part of response.text) {
-    summary += part;
+  // Check for common commit type keywords
+  for (const [type] of Object.entries(COMMIT_EMOJIS)) {
+    if (lowerTitle.includes(type)) {
+      return type as keyof typeof COMMIT_EMOJIS;
+    }
   }
 
-  return summary;
+  // Check for common action words
+  if (lowerTitle.startsWith('update') || lowerTitle.includes('update')) return 'update' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('add') || lowerTitle.includes('add')) return 'add' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('remove') || lowerTitle.includes('remove')) return 'remove' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('fix') || lowerTitle.includes('fix')) return 'fix' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('improve') || lowerTitle.includes('improve')) return 'refactor' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('rename') || lowerTitle.includes('rename')) return 'rename' as keyof typeof COMMIT_EMOJIS;
+  if (lowerTitle.startsWith('move') || lowerTitle.includes('move')) return 'move' as keyof typeof COMMIT_EMOJIS;
+
+  return 'default' as keyof typeof COMMIT_EMOJIS;
+}
+
+async function generateCommitMessage(repository: Repository, changedUris: vscode.Uri[]): Promise<CommitMessageParts | null> {
+  try {
+    // Limit the number of files to process to avoid token limits
+    const maxFiles = 5;
+    const maxDiffLength = 1000; // characters per file
+    const urisToProcess = changedUris.slice(0, maxFiles);
+
+    const diffs = await Promise.all(
+      urisToProcess.map(async (uri) => {
+        const filePath = vscode.workspace.asRelativePath(uri);
+        const fileDiff = await repository.diffWithHEAD(filePath);
+
+        // Truncate large diffs to avoid exceeding token limits
+        const truncatedDiff = fileDiff.length > maxDiffLength
+          ? fileDiff.substring(0, maxDiffLength) + '\n... (diff truncated)'
+          : fileDiff;
+
+        return `## ${filePath}
+---
+${truncatedDiff}`;
+      }));
+
+    // Add a note if we had to limit the number of files
+    const additionalFiles = changedUris.length - urisToProcess.length;
+    if (additionalFiles > 0) {
+      diffs.push(`\n... and ${additionalFiles} more file(s) changed`);
+    }
+
+    console.log('GitDoc AI: Fetching model...');
+    const model = await vscode.lm.selectChatModels({ family: config.aiModel });
+
+    if (!model || model.length === 0) {
+      console.error('GitDoc AI: No model available for family:', config.aiModel);
+      vscode.window.showErrorMessage(`GitDoc AI: No model available for family: ${config.aiModel}`);
+      return null;
+    }
+
+    console.log('GitDoc AI: Model selected:', model[0].id);
+
+    const prompt = `Create a Git commit message with title and body.
+
+Rules:
+- Title: Max 50 chars, starts with verb (Update/Fix/Add)
+- Body: 2-3 sentences explaining what changed and why
+${config.aiUseEmojis && !config.aiUseConsistentEmojis ? '- Start title with relevant emoji' : ''}
+
+Changes:
+${diffs.join("\n\n")}
+
+Response format:
+TITLE: [your title here]
+BODY: [your body here]`;
+
+    console.log('GitDoc AI: Sending request to model...');
+    const response = await model[0].sendRequest([{
+      role: vscode.LanguageModelChatMessageRole.User,
+      name: "User",
+      content: prompt
+    }]);
+
+    let fullMessage = "";
+    for await (const part of response.text) {
+      fullMessage += part;
+    }
+
+    console.log('GitDoc AI: Raw response:', fullMessage);
+
+    // More flexible parsing to handle different response formats
+    let title = '';
+    let body = '';
+
+    // Try multiple parsing strategies
+    const titleMatch = fullMessage.match(/TITLE:\s*(.+?)(?:\n|$)/i);
+    const bodyMatch = fullMessage.match(/BODY:\s*([\s\S]+?)(?:\n\n|$)/i);
+
+    if (titleMatch && bodyMatch) {
+      title = titleMatch[1].trim();
+      body = bodyMatch[1].trim();
+    } else {
+      // Fallback parsing - split by double newline
+      const parts = fullMessage.split(/\n\n+/).map(part => part.trim());
+      if (parts.length >= 2) {
+        title = parts[0].replace(/^TITLE:\s*/i, '').trim();
+        body = parts[1].replace(/^BODY:\s*/i, '').trim();
+      } else {
+        // Last resort - use the whole response as title
+        title = fullMessage.replace(/^TITLE:\s*/i, '').trim().split('\n')[0];
+        body = '';
+      }
+    }
+
+    // Ensure title is not empty and follows conventions
+    if (!title) {
+      console.error('GitDoc AI: Empty title extracted');
+      return null;
+    }
+
+    // Trim title to 50 characters if needed
+    if (title.length > 50) {
+      title = title.substring(0, 47) + '...';
+    }
+
+    console.log('GitDoc AI: Parsed title:', title);
+    console.log('GitDoc AI: Parsed body:', body);
+
+    // Add emoji if enabled and not already present
+    if (config.aiUseEmojis) {
+      // Check if the title already starts with an emoji
+      const emojiRegex = /^[\p{Emoji_Presentation}\p{Emoji}\uFE0F]/u;
+      if (!emojiRegex.test(title)) {
+        const commitType = determineCommitType(title);
+        const emoji = COMMIT_EMOJIS[commitType];
+        return {
+          title: `${emoji} ${title}`,
+          body: body
+        };
+      }
+    }
+
+    return { title, body };
+  } catch (error) {
+    console.error('GitDoc AI: Error generating commit message:', error);
+    vscode.window.showErrorMessage(`GitDoc AI: Error - ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 export async function commit(repository: Repository, message?: string) {
@@ -179,9 +312,19 @@ export async function commit(repository: Repository, message?: string) {
   let commitMessage = message || currentTime.toFormat(config.commitMessageFormat);
 
   if (config.aiEnabled) {
+    console.log('GitDoc AI: Attempting to generate AI commit message...');
     const aiMessage = await generateCommitMessage(repository, changedUris);
+
     if (aiMessage) {
-      commitMessage = aiMessage;
+      // Combine title and body with proper formatting
+      commitMessage = aiMessage.title;
+      if (aiMessage.body) {
+        commitMessage += `\n\n${aiMessage.body}`;
+      }
+      console.log('GitDoc AI: Successfully generated commit message');
+    } else {
+      console.log('GitDoc AI: Failed to generate message, falling back to date/time format');
+      vscode.window.showWarningMessage('GitDoc AI: Using fallback date/time format for commit message');
     }
   }
 
@@ -199,7 +342,7 @@ export async function commit(repository: Repository, message?: string) {
   }
 }
 
-// TODO: Clear the timeout when GitDoc is disabled.
+// Debounce function remains the same...
 function debounce(fn: Function, delay: number) {
   let timeout: NodeJS.Timeout | null = null;
 
@@ -214,6 +357,7 @@ function debounce(fn: Function, delay: number) {
   };
 }
 
+// The rest of the file (commitMap, statusBarItem, etc.) remains the same...
 const commitMap = new Map();
 function debouncedCommit(repository: Repository) {
   if (!commitMap.has(repository)) {
