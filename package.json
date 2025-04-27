@@ -172,10 +172,25 @@
           "default": "gpt-4o",
           "enum": [
             "gpt-4o",
-            "o1-ga",
-            "o1-mini",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo",
+            "claude-3.7-sonnet",
             "claude-3.5-sonnet",
-            "gemini-1.5-pro"
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "o1",
+            "o1-mini"
+          ],
+          "enumDescriptions": [
+            "GPT-4o - OpenAI's optimized model, good balance of speed and quality",
+            "GPT-4 Turbo - OpenAI's high-performance model with 128K context",
+            "GPT-3.5 Turbo - Fast and efficient OpenAI model",
+            "Claude 3.7 Sonnet - Anthropic's latest model, excellent for code",
+            "Claude 3.5 Sonnet - Anthropic's highly capable model",
+            "Gemini 2.0 Flash - Google's low-latency model for fast responses",
+            "Gemini 1.5 Pro - Google's advanced model with up to 1M token context",
+            "O1 - OpenAI's reasoning model for complex tasks",
+            "O1 Mini - Smaller, faster version of O1"
           ],
           "markdownDescription": "Specifies the AI model to use when generating commit messages. This setting only applies when `GitDoc > AI: Enabled` is set to `true`. Defaults to `gpt-4o`."
         },
