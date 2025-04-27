@@ -198,6 +198,20 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Enable debug logging for AI commit message generation. Useful for troubleshooting issues with AI generation."
+        },
+        "gitdoc.ai.maxFiles": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "markdownDescription": "Maximum number of files to include in AI commit message generation. Helps prevent token limit errors."
+        },
+        "gitdoc.ai.maxDiffLength": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 500,
+          "maximum": 5000,
+          "markdownDescription": "Maximum length of each file's diff to include in AI commit message generation. Helps prevent token limit errors."
         }
       }
     },
