@@ -78,5 +78,11 @@ export default {
   },
   get aiDebugMode() {
     return config().get("ai.debugMode", false);
+  },
+  get aiMaxFiles() {
+    return config().get("ai.maxFiles", 5);
+  },
+  get aiMaxDiffLength() {
+    return config().get("ai.maxDiffLength", 1000);
   }
 };
