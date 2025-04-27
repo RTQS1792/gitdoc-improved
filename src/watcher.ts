@@ -129,8 +129,8 @@ function determineCommitType(title: string): keyof typeof COMMIT_EMOJIS {
 async function generateCommitMessage(repository: Repository, changedUris: vscode.Uri[]): Promise<CommitMessageParts | null> {
   try {
     // Limit the number of files to process to avoid token limits
-    const maxFiles = 5;
-    const maxDiffLength = 1000; // characters per file
+    const maxFiles = config.aiMaxFiles;
+    const maxDiffLength = config.aiMaxDiffLength;
     const urisToProcess = changedUris.slice(0, maxFiles);
 
     const diffs = await Promise.all(
